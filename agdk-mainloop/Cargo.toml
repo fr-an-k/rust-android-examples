@@ -13,5 +13,5 @@ ndk-sys = "0.4"
 ndk = "0.7"
 
 [lib]
-name="main"
+name="agdk_mainloop"
 crate_type=["cdylib"]

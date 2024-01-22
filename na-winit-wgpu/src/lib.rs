@@ -3,6 +3,7 @@
 
 use std::{borrow::Cow, sync::Arc};
 
+use android_activity::WindowManagerFlags;
 use log::trace;
 
 use wgpu::TextureFormat;
@@ -14,7 +15,7 @@ use winit::{
 };
 
 #[cfg(target_os = "android")]
-use winit::platform::android::activity::AndroidApp;
+use winit::platform::android::{activity::AndroidApp, EventLoopBuilderExtAndroid};
 
 struct RenderState {
     device: Device,
@@ -35,6 +36,8 @@ struct App<'a> {
     adapter: Option<Adapter>,
     surface_state: Option<SurfaceState<'a>>,
     render_state: Option<RenderState>,
+    #[cfg(target_os = "android")]
+    android_app: Option<AndroidApp>,
 }
 
 impl App<'_> {
@@ -44,6 +47,8 @@ impl App<'_> {
             adapter: None,
             surface_state: None,
             render_state: None,
+            #[cfg(target_os = "android")]
+            android_app: None,
         }
     }
 
@@ -77,6 +82,12 @@ impl App<'_> {
 
     async fn init_render_state(adapter: &Adapter, target_format: TextureFormat) -> RenderState {
         log::info!("Initializing render state");
+
+        log::info!(
+            "WebGPU compliant adapter? {}",
+            adapter.get_downlevel_capabilities().is_webgpu_compliant()
+        );
+        log::info!("Supports: {:?}", adapter.features());
 
         log::info!("WGPU: requesting device");
         // Create the logical device and command queue
@@ -195,8 +206,8 @@ impl App<'_> {
                 //present_mode: wgpu::PresentMode::Mailbox,
                 present_mode: wgpu::PresentMode::Fifo,
                 view_formats: vec![swapchain_format],
-                //alpha_mode: wgpu::CompositeAlphaMode::Inherit,
-                alpha_mode: wgpu::CompositeAlphaMode::Opaque,
+                alpha_mode: wgpu::CompositeAlphaMode::Inherit,
+                //alpha_mode: wgpu::CompositeAlphaMode::Opaque,
             };
 
             log::info!("WGPU: Configuring surface swapchain: format = {swapchain_format:?}, size = {size:?}");
@@ -302,6 +313,14 @@ fn run(event_loop: EventLoop<()>, mut app: App) {
                     WindowEvent::CursorMoved { .. } => {
                         // not logged, contains mouse motion
                     }
+                    #[cfg(target_os = "android")]
+                    WindowEvent::Touch { .. } => {
+                        // Demonstration of showing onscreen keyboard.
+                        // show_implicit argument means something other than
+                        // a literal "open keyboard" button was pressed
+                        log::info!("check");
+                        app.android_app.as_ref().unwrap().show_soft_input(false);
+                    }
                     _ => {
                         log::info!("Window event {:#?}", event);
                     }
@@ -329,14 +348,16 @@ fn run(event_loop: EventLoop<()>, mut app: App) {
         .ok();
 }
 
-async fn _main(event_loop: EventLoop<()>) {
+async fn _main(#[cfg(target_os = "android")] android_app: AndroidApp) {
     let wgpu_backend = option_env!("WGPU_BACKEND");
     let backends = if wgpu_backend != None {
-        wgpu::util::parse_backends_from_comma_list(wgpu_backend.unwrap()) //wgpu::Backends::GL
+        log::info!("Using wgpu backend(s) {}", wgpu_backend.unwrap());
+        wgpu::util::parse_backends_from_comma_list(wgpu_backend.unwrap())
     } else {
+        log::info!("Using any WGPU backend");
         wgpu::Backends::all()
     };
-    log::info!("Using wgpu backends {}", backends.bits());
+
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends,
         ..Default::default()
@@ -345,9 +366,58 @@ async fn _main(event_loop: EventLoop<()>) {
     #[allow(unused_mut)]
     let mut app = App::new(instance);
 
-    // spawn_local causes ownership troubles in the event loop closure, so just init here
+    // spawn_local causes ownership troubles in the event loop closure
+    // so just create the surface here
     #[cfg(target_arch = "wasm32")]
     app.resume(&event_loop).await;
+
+    #[cfg(target_os = "android")]
+    let event_loop = {
+        //use android_activity::WindowManagerFlags;
+        /*android_app.set_window_flags(
+            WindowManagerFlags::empty(),
+            WindowManagerFlags::NOT_FOCUSABLE | WindowManagerFlags::NOT_TOUCH_MODAL,
+        );
+        android_app.show_soft_input(false);*/
+        /*View decorView = getWindow().getDecorView();
+        WindowInsetsControllerCompat controller = new WindowInsetsControllerCompat(getWindow(),
+                decorView);
+        controller.show(WindowInsetsCompat.Type.ime());*/
+
+        let activity = android_app.activity_as_ptr();
+        ndk_sys::ANativeActivity_
+
+        app.android_app = Some(android_app.clone());
+        log::info!(
+            "Android app internal data path {}",
+            android_app.internal_data_path().unwrap().display()
+        );
+        log::info!(
+            "Android app external data path {}",
+            android_app.external_data_path().unwrap().display()
+        );
+        /*use jni;
+        use ndk_context;
+        let ctx = ndk_context::android_context();
+        let jvm_ptr = ctx.vm();
+        let jvm = unsafe {
+            jni::JavaVM::from_raw(jvm_ptr.cast())
+                .expect("Expected to find JVM via ndk_context crate")
+        };
+        let env = jvm.attach_current_thread_permanently().unwrap();
+
+        let activity_ptr = ctx.context();
+        let activity =
+            unsafe { jni::objects::JObject::from_raw(activity_ptr as jni::sys::jobject) };*/
+
+        EventLoopBuilder::new()
+            .with_android_app(android_app)
+            .build()
+            .unwrap()
+    };
+
+    #[cfg(not(target_os = "android"))]
+    let event_loop = EventLoopBuilder::new().build().unwrap();
 
     run(event_loop, app)
 }
@@ -356,17 +426,11 @@ async fn _main(event_loop: EventLoop<()>) {
 #[cfg(target_os = "android")]
 #[no_mangle]
 fn android_main(app: AndroidApp) {
-    use winit::platform::android::EventLoopBuilderExtAndroid;
-
     android_logger::init_once(
         android_logger::Config::default().with_max_level(log::LevelFilter::Info),
     );
 
-    let event_loop = EventLoopBuilder::new()
-        .with_android_app(app)
-        .build()
-        .unwrap();
-    pollster::block_on(_main(event_loop));
+    pollster::block_on(_main(app));
 }
 
 #[allow(dead_code)]
@@ -376,8 +440,7 @@ fn main() {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
     console_log::init_with_level(log::Level::Info).expect("Couldn't initialize logger");
 
-    let event_loop = EventLoopBuilder::new().build().unwrap();
-    wasm_bindgen_futures::spawn_local(_main(event_loop));
+    wasm_bindgen_futures::spawn_local(_main());
 }
 
 #[allow(dead_code)]
@@ -388,6 +451,5 @@ fn main() {
         .parse_default_env()
         .init();
 
-    let event_loop = EventLoopBuilder::new().build().unwrap();
-    pollster::block_on(_main(event_loop));
+    pollster::block_on(_main());
 }

@@ -40,10 +40,30 @@ default = []
 desktop = []
 
 [lib]
-name="main"
+name="agdk_winit_wgpu"
 crate_type=["cdylib"]
 
 [[bin]]
 path="src/lib.rs"
 name="test-winit-wgpu"
 required-features = [ "desktop" ]
+
+[package.metadata.android]
+package = "com.examples.agdk_winit_main"
+build_targets = [ "aarch64-linux-android" ] #, "armv7-linux-androideabi", "i686-linux-android", "x86_64-linux-android" ]
+
+[package.metadata.android.sdk]
+min_sdk_version = 21
+target_sdk_version = 34
+max_sdk_version = 34
+
+[package.metadata.android.signing.release]
+path = "/home/frank/.android/debug.keystore"
+keystore_password = "android"
+
+#[[package.metadata.android.uses_feature]]
+#name = "android.hardware.vulkan.level"
+#required = true
+#version = 1
+
+# For more Android options, see https://docs.rs/crate/cargo-apk/latest
