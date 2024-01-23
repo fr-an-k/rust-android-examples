@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 log = "0.4"
 winit = { version = "0.28", features = ["android-game-activity"]}
-wgpu = "0.16.0"
+wgpu = "0.18"
 pollster = "0.2"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
@@ -40,7 +40,7 @@ default = []
 desktop = []
 
 [lib]
-name="agdk_winit_wgpu"
+name="main"
 crate_type=["cdylib"]
 
 [[bin]]

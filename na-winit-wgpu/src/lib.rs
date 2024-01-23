@@ -206,8 +206,8 @@ impl App<'_> {
                 //present_mode: wgpu::PresentMode::Mailbox,
                 present_mode: wgpu::PresentMode::Fifo,
                 view_formats: vec![swapchain_format],
-                alpha_mode: wgpu::CompositeAlphaMode::Inherit,
-                //alpha_mode: wgpu::CompositeAlphaMode::Opaque,
+                //alpha_mode: wgpu::CompositeAlphaMode::Inherit,
+                alpha_mode: wgpu::CompositeAlphaMode::Opaque,
             };
 
             log::info!("WGPU: Configuring surface swapchain: format = {swapchain_format:?}, size = {size:?}");
@@ -318,11 +318,22 @@ fn run(event_loop: EventLoop<()>, mut app: App) {
                         // Demonstration of showing onscreen keyboard.
                         // show_implicit argument means something other than
                         // a literal "open keyboard" button was pressed
-                        log::info!("check");
-                        app.android_app.as_ref().unwrap().show_soft_input(false);
+                        log::info!("check2");
+                        app.android_app.as_ref().unwrap().show_soft_input(true);
                     }
                     _ => {
-                        log::info!("Window event {:#?}", event);
+                        log::info!(
+                            "Window event {:#?}",
+                            event,
+                            /*match event {
+                                WindowEvent::Touch { .. } => {
+                                    1
+                                }
+                                _ => {
+                                    0
+                                }
+                            }*/
+                        );
                     }
                 },
                 Event::AboutToWait => {
@@ -384,8 +395,17 @@ async fn _main(#[cfg(target_os = "android")] android_app: AndroidApp) {
                 decorView);
         controller.show(WindowInsetsCompat.Type.ime());*/
 
-        let activity = android_app.activity_as_ptr();
-        ndk_sys::ANativeActivity_
+        //let activity = android_app.activity_as_ptr();
+        //let na = android_app.native_activity();
+        //unsafe {
+        /*let flags = if show_implicit {
+            ndk_sys::ANATIVEACTIVITY_SHOW_SOFT_INPUT_IMPLICIT
+        } else {
+            0
+        };*/
+        /*let flags = ndk_sys::ANATIVEACTIVITY_SHOW_SOFT_INPUT_FORCED;
+            ndk_sys::ANativeActivity_showSoftInput(activity as *mut _, flags);
+        }*/
 
         app.android_app = Some(android_app.clone());
         log::info!(

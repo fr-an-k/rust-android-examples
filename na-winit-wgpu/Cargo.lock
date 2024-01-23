@@ -885,6 +885,7 @@ dependencies = [
  "jni",
  "log",
  "ndk-context",
+ "ndk-sys",
  "pollster",
  "wasm-bindgen",
  "wasm-bindgen-futures",

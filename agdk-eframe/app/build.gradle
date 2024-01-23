@@ -4,12 +4,12 @@ plugins {
 
 android {
     ndkVersion "25.2.9519653"
-    compileSdk 31
+    compileSdk 34
 
     defaultConfig {
         applicationId "co.realfit.agdkeframe"
-        minSdk 28
-        targetSdk 31
+        minSdk 22
+        targetSdk 34
         versionCode 1
         versionName "1.0"
 

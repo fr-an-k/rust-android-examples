@@ -7,7 +7,6 @@ use wgpu::{Adapter, Device, Instance, PipelineLayout, Queue, RenderPipeline, Sha
 
 use winit::platform::android::EventLoopBuilderExtAndroid;
 //use winit::platform::run::EventLoopExtRunReturn;
-use winit::platform::run_return::EventLoopExtRunReturn;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopWindowTarget},
@@ -25,20 +24,20 @@ struct RenderState {
     render_pipeline: RenderPipeline,
 }
 
-struct SurfaceState {
-    window: winit::window::Window,
-    surface: wgpu::Surface,
+struct SurfaceState<'a> {
+    window: Arc<winit::window::Window>,
+    surface: wgpu::Surface<'a>,
 }
 
-struct App {
+struct App<'a> {
     instance: Instance,
     adapter: Option<Adapter>,
-    surface_state: Option<SurfaceState>,
+    surface_state: Option<SurfaceState<'a>>,
     render_state: Option<RenderState>,
     android_app: AndroidApp,
 }
 
-impl App {
+impl App<'_> {
     fn new(instance: Instance, android_app: AndroidApp) -> Self {
         Self {
             instance,
@@ -50,13 +49,15 @@ impl App {
     }
 
     fn create_surface<T>(&mut self, elwt: &EventLoopWindowTarget<T>) {
-        let window = winit::window::Window::new(elwt).unwrap();
+        let window = Arc::new(winit::window::Window::new(elwt).unwrap());
         log::info!("WGPU: creating surface for native window");
 
         // # Panics
         // Currently create_surface is documented to only possibly fail with with WebGL2
-        let surface =
-            unsafe { self.instance.create_surface(&window) }.expect("Failed to create surface");
+        let surface = self
+            .instance
+            .create_surface(window.clone())
+            .expect("Failed to create surface");
         self.surface_state = Some(SurfaceState { window, surface });
     }
 
@@ -69,9 +70,9 @@ impl App {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    features: wgpu::Features::empty(),
+                    required_features: wgpu::Features::empty(),
                     // Make sure we use the texture resolution limits from the adapter, so we can support images the size of the swapchain.
-                    limits: wgpu::Limits::downlevel_webgl2_defaults()
+                    required_limits: wgpu::Limits::downlevel_webgl2_defaults()
                         .using_resolution(adapter.limits()),
                 },
                 None,
@@ -172,13 +173,14 @@ impl App {
         if let (Some(render_state), Some(surface_state)) = (&self.render_state, &self.surface_state)
         {
             let swapchain_format = render_state.target_format;
-            let size = surface_state.window.inner_size();
+            let size = surface_state.window.as_ref().inner_size();
 
             let config = wgpu::SurfaceConfiguration {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 format: swapchain_format,
                 width: size.width,
                 height: size.height,
+                desired_maximum_frame_latency: 2,
                 //present_mode: wgpu::PresentMode::Mailbo,
                 present_mode: wgpu::PresentMode::Fifo,
                 //alpha_mode: wgpu::CompositeAlphaMode::Inherit,
@@ -196,7 +198,7 @@ impl App {
     fn queue_redraw(&self) {
         if let Some(surface_state) = &self.surface_state {
             trace!("Making Redraw Request");
-            surface_state.window.request_redraw();
+            surface_state.window.as_ref().request_redraw();
         }
     }
 
@@ -209,17 +211,18 @@ impl App {
     }
 }
 
-fn run(mut event_loop: EventLoop<()>, mut app: App) {
+fn run(event_loop: EventLoop<()>, mut app: App) {
     // It's not recommended to use `run` on Android because it will call
     // `std::process::exit` when finished which will short-circuit any
     // Java lifecycle handling
-    event_loop.run_return(move |event, event_loop, control_flow| {
+    event_loop.set_control_flow(ControlFlow::Wait);
+
+    event_loop.run(move |event, elwt| {
         log::info!("Received Winit event: {event:?}");
 
-        *control_flow = ControlFlow::Wait;
         match event {
             Event::Resumed => {
-                app.resume(event_loop);
+                app.resume(elwt);
             }
             Event::Suspended => {
                 log::info!("Suspended, dropping render state...");
@@ -234,7 +237,10 @@ fn run(mut event_loop: EventLoop<()>, mut app: App) {
                 // for a resize which may be required on some platforms...
                 app.queue_redraw();
             }
-            Event::RedrawRequested(_) => {
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested,
+                ..
+            } => {
                 log::info!("Handling Redraw Request");
 
                 if let Some(ref surface_state) = app.surface_state {
@@ -273,21 +279,21 @@ fn run(mut event_loop: EventLoop<()>, mut app: App) {
 
                         rs.queue.submit(Some(encoder.finish()));
                         frame.present();
-                        surface_state.window.request_redraw();
+                        surface_state.window.as_ref().request_redraw();
                     }
                 }
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
-            } => *control_flow = ControlFlow::Exit,
-            Event::WindowEvent { event, .. } => match event {
-                WindowEvent::Touch(..) => {
-                    app.android_app.show_soft_input(true);
+            } => elwt.exit(),
+            Event::WindowEvent { event, .. } => {
+                match event {
+                    WindowEvent::Touch(..) => {
+                        app.android_app.show_soft_input(true);
+                    }
+                    _ => {}
                 }
-                _ => {}
-            },
-            Event::WindowEvent { event: _, .. } => {
                 log::info!("Window event {:#?}", event);
             }
             _ => {}
@@ -307,7 +313,8 @@ fn _main(android_app: AndroidApp) {
 
     let event_loop = EventLoopBuilder::new()
         .with_android_app(android_app)
-        .build();
+        .build()
+        .unwrap();
     run(event_loop, app);
 }
 

@@ -8,7 +8,7 @@ android {
 
     defaultConfig {
         applicationId "co.realfit.agdkwinitwgpu"
-        minSdk 28
+        minSdk 27
         targetSdk 31
         versionCode 1
         versionName "1.0"
